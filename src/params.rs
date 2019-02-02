@@ -17,6 +17,34 @@ pub struct ParamBag {
 
 type ParamResult = Result<ParamBag, Box<dyn Error>>;
 
+impl ParamBag {
+    pub fn process(mut self, client: &SsmClient) -> ParamResult {
+        if let Some(req) = self.next_req.take() {
+            let resp = client
+                .get_parameters_by_path(req)
+                .sync()
+                .map_err(Box::new)?;
+
+            if let Some(parameters) = resp.parameters {
+                for parameter in parameters {
+                    if let (Some(name), Some(value)) = (parameter.name, parameter.value) {
+                        self.params.push(Param {
+                            key: to_env_name(self.prefix.as_str(), name.as_str()),
+                            value,
+                        });
+                    }
+                }
+            }
+
+            if resp.next_token.is_some() {
+                self.next_req = Some(make_path_req(self.prefix.as_str(), resp.next_token))
+            }
+        }
+
+        Ok(self)
+    }
+}
+
 pub fn make_path_req(path: &str, next_token: Option<String>) -> GetParametersByPathRequest {
     GetParametersByPathRequest {
         max_results: None,
@@ -32,32 +60,6 @@ pub fn to_env_name(prefix: &str, name: &str) -> String {
     name.trim_start_matches(prefix).to_uppercase()
 }
 
-pub fn process_next_param_req(client: &SsmClient, mut bag: ParamBag) -> ParamResult {
-    if let Some(req) = bag.next_req.take() {
-        let resp = client
-            .get_parameters_by_path(req)
-            .sync()
-            .map_err(Box::new)?;
-
-        if let Some(parameters) = resp.parameters {
-            for parameter in parameters {
-                if let (Some(name), Some(value)) = (parameter.name, parameter.value) {
-                    bag.params.push(Param {
-                        key: to_env_name(bag.prefix.as_str(), name.as_str()),
-                        value,
-                    });
-                }
-            }
-        }
-
-        if resp.next_token.is_some() {
-            bag.next_req = Some(make_path_req(bag.prefix.as_str(), resp.next_token))
-        }
-    }
-
-    Ok(bag)
-}
-
 pub fn get_all_params_for_path(client: &SsmClient, path: &str) -> ParamResult {
     let mut bag = ParamBag {
         prefix: path.to_string(),
@@ -65,11 +67,9 @@ pub fn get_all_params_for_path(client: &SsmClient, path: &str) -> ParamResult {
         next_req: Some(make_path_req(path, None)),
     };
 
-    loop {
-        bag = process_next_param_req(&client, bag)?;
-
-        if bag.next_req.is_none() {
-            return Ok(bag);
-        }
+    while bag.next_req.is_some() {
+        bag = bag.process(&client)?;
     }
+
+    Ok(bag)
 }
