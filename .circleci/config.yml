@@ -31,9 +31,3 @@ workflows:
   test:
     jobs:
       - test
-  release:
-    jobs:
-      - release:
-          filters:
-            tags:
-              only: /^v.*/
