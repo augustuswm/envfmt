@@ -1,0 +1,10 @@
+[package]
+authors = ["Augustus Mayo <gusmayo@gmail.com>"]
+edition = "2018"
+name = "envfmt"
+version = "0.1.0"
+
+[dependencies]
+rusoto_core = "0.36.0"
+rusoto_ssm = "0.36.0"
+structopt = "0.2.14"
