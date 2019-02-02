@@ -21,3 +21,5 @@ The region to use can be specified with the `region` flag.
 
 If left unspecified the region will attempt to be read from the current
 environment. In the case that it fails, it will fall back to us-east-1.
+
+License: Apache-2.0

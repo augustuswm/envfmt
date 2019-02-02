@@ -1,0 +1,16 @@
+version: 2.0
+jobs:
+  test:
+    docker:
+      - image: clux/muslrust
+    steps:
+      - checkout
+      - run:
+          name: Test
+          command: cargo test
+
+workflows:
+  version: 2
+  test:
+    jobs:
+      - test
