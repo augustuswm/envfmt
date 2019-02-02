@@ -1,0 +1,20 @@
+{
+    "Parameters": [
+        {
+            "Name": "/path/to/the/third_param",
+            "Type": "String",
+            "Value": "third_param_value",
+            "Version": 1,
+            "LastModifiedDate": 1510848312.172,
+            "ARN": "arn:aws:ssm:us-east-1:012345678901:parameter/path/to/the/third_param"
+        },
+        {
+            "Name": "/path/to/the/fourth_param",
+            "Type": "String",
+            "Value": "fourth_param_value",
+            "Version": 1,
+            "LastModifiedDate": 1510848341.192,
+            "ARN": "arn:aws:ssm:us-east-1:012345678901:parameter/path/to/the/fourth_param"
+        }
+    ]
+}

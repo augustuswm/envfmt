@@ -1,8 +1,11 @@
-use rusoto_ssm::{GetParametersByPathRequest, Ssm, SsmClient};
+use rusoto_core::RusotoFuture;
+use rusoto_ssm::{
+    GetParametersByPathError, GetParametersByPathRequest, GetParametersByPathResult, Ssm, SsmClient,
+};
 
 use std::error::Error;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Param {
     pub key: String,
     pub value: String,
@@ -17,13 +20,29 @@ pub struct ParamBag {
 
 type ParamResult = Result<ParamBag, Box<dyn Error>>;
 
+pub trait Client {
+    fn get_param_page(
+        &self,
+        input: GetParametersByPathRequest,
+    ) -> RusotoFuture<GetParametersByPathResult, GetParametersByPathError>;
+}
+
+impl Client for SsmClient {
+    fn get_param_page(
+        &self,
+        input: GetParametersByPathRequest,
+    ) -> RusotoFuture<GetParametersByPathResult, GetParametersByPathError> {
+        self.get_parameters_by_path(input)
+    }
+}
+
 impl ParamBag {
-    pub fn process(mut self, client: &SsmClient) -> ParamResult {
+    pub fn process<T>(mut self, client: &T) -> ParamResult
+    where
+        T: Client,
+    {
         if let Some(req) = self.next_req.take() {
-            let resp = client
-                .get_parameters_by_path(req)
-                .sync()
-                .map_err(Box::new)?;
+            let resp = client.get_param_page(req).sync().map_err(Box::new)?;
 
             if let Some(parameters) = resp.parameters {
                 for parameter in parameters {
@@ -60,7 +79,10 @@ pub fn to_env_name(prefix: &str, name: &str) -> String {
     name.trim_start_matches(prefix).to_uppercase()
 }
 
-pub fn get_all_params_for_path(client: &SsmClient, path: &str) -> ParamResult {
+pub fn get_all_params_for_path<T>(client: &T, path: &str) -> ParamResult
+where
+    T: Client,
+{
     let mut bag = ParamBag {
         prefix: path.to_string(),
         params: Vec::new(),
@@ -68,8 +90,161 @@ pub fn get_all_params_for_path(client: &SsmClient, path: &str) -> ParamResult {
     };
 
     while bag.next_req.is_some() {
-        bag = bag.process(&client)?;
+        bag = bag.process(client)?;
     }
 
     Ok(bag)
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use rusoto_mock::{
+        MockCredentialsProvider, MockRequestDispatcher, MockResponseReader, ReadMockResponse,
+    };
+
+    use std::cell::RefCell;
+
+    struct MultiPageSsmClient {
+        page: RefCell<u8>,
+    }
+
+    impl Client for MultiPageSsmClient {
+        fn get_param_page(
+            &self,
+            input: GetParametersByPathRequest,
+        ) -> RusotoFuture<GetParametersByPathResult, GetParametersByPathError> {
+            let res = match *self.page.borrow() {
+                1 => client_with_next().get_param_page(input),
+                2 => client_with_next_ending().get_param_page(input),
+                _ => panic!("Too many pages!"),
+            };
+
+            let new_page = { *self.page.borrow() + 1 };
+
+            self.page.replace(new_page);
+
+            res
+        }
+    }
+
+    fn client_with_next() -> SsmClient {
+        rusoto_ssm::SsmClient::new_with(
+            MockRequestDispatcher::default().with_body(&MockResponseReader::read_response(
+                "test_data",
+                "path_with_next_resp.json",
+            )),
+            MockCredentialsProvider,
+            Default::default(),
+        )
+    }
+
+    fn client_with_next_ending() -> SsmClient {
+        rusoto_ssm::SsmClient::new_with(
+            MockRequestDispatcher::default().with_body(&MockResponseReader::read_response(
+                "test_data",
+                "path_with_next_ending_resp.json",
+            )),
+            MockCredentialsProvider,
+            Default::default(),
+        )
+    }
+
+    fn client_without_next() -> SsmClient {
+        rusoto_ssm::SsmClient::new_with(
+            MockRequestDispatcher::default().with_body(&MockResponseReader::read_response(
+                "test_data",
+                "path_resp.json",
+            )),
+            MockCredentialsProvider,
+            Default::default(),
+        )
+    }
+
+    fn client_with_multiple_pages() -> MultiPageSsmClient {
+        MultiPageSsmClient {
+            page: RefCell::new(1),
+        }
+    }
+
+    #[test]
+    fn test_process_add_results_to_bag() {
+        let mut bag = ParamBag {
+            prefix: "/path/to/the/".to_string(),
+            params: vec![],
+            next_req: Some(make_path_req("/path/to/the/", None)),
+        };
+
+        bag = bag.process(&client_without_next()).unwrap();
+
+        assert_eq!(
+            Param {
+                key: "FIRST_PARAM".into(),
+                value: "first_param_value".into()
+            },
+            bag.params[0]
+        );
+
+        assert_eq!(
+            Param {
+                key: "SECOND_PARAM".into(),
+                value: "second_param_value".into()
+            },
+            bag.params[1]
+        );
+    }
+
+    #[test]
+    fn test_process_creates_next_request_with_token() {
+        let mut bag = ParamBag {
+            prefix: "/path/to/the/".to_string(),
+            params: vec![],
+            next_req: Some(make_path_req("/path/to/the/", None)),
+        };
+
+        bag = bag.process(&client_with_next()).unwrap();
+
+        assert!(bag.next_req.is_some());
+        assert!(bag.next_req.clone().unwrap().next_token.is_some());
+        assert_eq!(
+            "this-is-the-next-token",
+            bag.next_req.unwrap().next_token.unwrap()
+        );
+    }
+
+    #[test]
+    fn test_process_does_not_create_next_request_without_token() {
+        let mut bag = ParamBag {
+            prefix: "/path/to/the/".to_string(),
+            params: vec![],
+            next_req: Some(make_path_req("/path/to/the/", None)),
+        };
+
+        bag = bag.process(&client_without_next()).unwrap();
+
+        assert!(bag.next_req.is_none());
+    }
+
+    #[test]
+    fn test_converts_to_env_var_name() {
+        assert_eq!(
+            "PARAM_KEY",
+            to_env_name("/path/to/the/", "/path/to/the/param_key")
+        );
+    }
+
+    #[test]
+    fn test_makes_initial_process_call() {
+        let bag = get_all_params_for_path(&client_without_next(), "/path/to/the").unwrap();
+
+        assert_eq!(2, bag.params.len());
+    }
+
+    #[test]
+    fn test_calls_process_until_out_of_requests() {
+        let bag = get_all_params_for_path(&client_with_multiple_pages(), "/path/to/the").unwrap();
+        assert_eq!(4, bag.params.len());
+        assert!(bag.next_req.is_none());
+    }
 }

@@ -8,3 +8,6 @@ version = "0.1.0"
 rusoto_core = "0.36.0"
 rusoto_ssm = "0.36.0"
 structopt = "0.2.14"
+
+[dev-dependencies]
+rusoto_mock = "0.30.0"
