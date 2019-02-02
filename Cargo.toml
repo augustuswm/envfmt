@@ -5,6 +5,9 @@ name = "envfmt"
 version = "0.1.0"
 license = "Apache-2.0"
 
+[badges]
+circle-ci = { repository = "augustuswm/envfmt" }
+
 [dependencies]
 rusoto_core = "0.36.0"
 rusoto_ssm = "0.36.0"

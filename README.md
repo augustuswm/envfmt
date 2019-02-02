@@ -1,5 +1,7 @@
 # envfmt
 
+[![Build Status](https://circleci.com/gh/augustuswm/envfmt/tree/master.svg?style=shield)](https://circleci.com/gh/augustuswm/envfmt/tree/master)
+
 A small command line utility for reading parameters from a path in
 the AWS Systems Manager Parameter Store and outputting them in a given
 format.
