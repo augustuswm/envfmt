@@ -18,6 +18,33 @@ pub struct ParamBag {
     pub next_req: Option<GetParametersByPathRequest>,
 }
 
+impl ParamBag {
+    pub fn new(path: &str) -> Self {
+        let path_formatted = normalize_path(path);
+        let req = make_path_req(path_formatted.as_str(), None);
+
+        ParamBag {
+            prefix: path_formatted,
+            params: Vec::new(),
+            next_req: Some(req),
+        }
+    }
+}
+
+pub fn normalize_path(path: &str) -> String {
+    let with_leading_slash = match path.chars().next() {
+        Some('/') => path.to_string(),
+        _ => "/".to_string() + path,
+    };
+
+    let normalized = match with_leading_slash.chars().last() {
+        Some('/') => with_leading_slash,
+        _ => with_leading_slash + "/",
+    };
+
+    normalized
+}
+
 type ParamResult = Result<ParamBag, Box<dyn Error>>;
 
 pub trait Client {
@@ -83,11 +110,7 @@ pub fn get_all_params_for_path<T>(client: &T, path: &str) -> ParamResult
 where
     T: Client,
 {
-    let mut bag = ParamBag {
-        prefix: path.to_string(),
-        params: Vec::new(),
-        next_req: Some(make_path_req(path, None)),
-    };
+    let mut bag = ParamBag::new(path);
 
     while bag.next_req.is_some() {
         bag = bag.process(client)?;
@@ -166,6 +189,19 @@ mod tests {
         MultiPageSsmClient {
             page: RefCell::new(1),
         }
+    }
+
+    #[test]
+    fn test_normalizes_path_on_construction() {
+        let b1 = ParamBag::new("/path/to/the");
+        let b2 = ParamBag::new("/path/to/the/");
+        let b3 = ParamBag::new("/path/to/the");
+        let b4 = ParamBag::new("path/to/the/");
+
+        assert_eq!("/path/to/the/", b1.prefix);
+        assert_eq!("/path/to/the/", b2.prefix);
+        assert_eq!("/path/to/the/", b3.prefix);
+        assert_eq!("/path/to/the/", b4.prefix);
     }
 
     #[test]

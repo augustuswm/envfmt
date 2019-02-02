@@ -8,9 +8,32 @@ jobs:
       - run:
           name: Test
           command: cargo test
+  release:
+    docker:
+      - image: clux/muslrust
+    steps:
+      - checkout
+      - run:
+          name: Build
+          command: cargo build --release
+      - run:
+          name: Get release version
+          command: |
+            REL_VERSION=$(grep -P "^version = " Cargo.toml | grep -oP "\d+\.\d+\.\d+")
+            echo "v${REL_VERSION}" > ver
+      - run:
+          name: Upload binary
+          command: |
+            ./.deploy/upload_release.sh owner=$(echo $CIRCLE_USERNAME) repo=$(echo $CIRCLE_PROJECT_REPONAME) tag=$(cat ver) filename=~/project/target/x86_64-unknown-linux-musl/release/envfmt
 
 workflows:
   version: 2
   test:
     jobs:
       - test
+  release:
+    jobs:
+      - release:
+          filters:
+            tags:
+              only: /^v.*/
