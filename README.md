@@ -9,9 +9,10 @@ AWS path format.
 
 `/path1/path2/path3/param`
 
-Two formats are currently support: .env and php-fpm.conf
+Two output formats are currently support: `.env` and `php-fpm.conf`
 
 `envfmt /path/to/ dot-env > .env`
+
 `envfmt /path/to/ php-fpm > env.conf`
 
 The region to use can be specified with the `region` flag.
