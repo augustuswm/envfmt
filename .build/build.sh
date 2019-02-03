@@ -16,6 +16,9 @@ cp $DIR/../target/release/envfmt $DIR/artifacts/envfmt-macos
 chmod +x $DIR/artifacts/envfmt-linux-musl
 chmod +x $DIR/artifacts/envfmt-macos
 
+strip $DIR/artifacts/envfmt-linux-musl
+strip $DIR/artifacts/envfmt-macos
+
 VERSION="v$(grep -E "^version = " $DIR/../Cargo.toml | grep -oE "\d+\.\d+\.\d+")"
 
 hub release create $VERSION \
