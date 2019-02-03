@@ -2,4 +2,4 @@
 
 cd /workspace
 
-cargo build --release
+RUSTFLAGS="--remap-path-prefix=$HOME=/ --remap-path-prefix=$PWD=/" cargo build --release

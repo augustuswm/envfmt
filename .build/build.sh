@@ -6,7 +6,7 @@ docker build -t envfmt_build $DIR
 
 docker run -t -v $DIR/../:/workspace envfmt_build
 
-cargo build --release
+RUSTFLAGS="--remap-path-prefix=$HOME=/ --remap-path-prefix=$PWD=/" cargo build --release
 
 mkdir -p $DIR/artifacts
 
