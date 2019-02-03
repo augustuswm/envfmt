@@ -7,6 +7,7 @@ docker build -t envfmt_build $DIR
 docker run -t -v $DIR/../:/workspace envfmt_build
 
 RUSTFLAGS="--remap-path-prefix=$HOME=/ --remap-path-prefix=$PWD=/" cargo build --release
+strip $DIR/../target/release/envfmt $DIR/artifacts/envfmt-macos
 
 mkdir -p $DIR/artifacts
 
@@ -15,9 +16,6 @@ cp $DIR/../target/release/envfmt $DIR/artifacts/envfmt-macos
 
 chmod +x $DIR/artifacts/envfmt-linux-musl
 chmod +x $DIR/artifacts/envfmt-macos
-
-strip $DIR/artifacts/envfmt-linux-musl
-strip $DIR/artifacts/envfmt-macos
 
 VERSION="v$(grep -E "^version = " $DIR/../Cargo.toml | grep -oE "\d+\.\d+\.\d+")"
 
