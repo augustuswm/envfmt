@@ -40,7 +40,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     let client = SsmClient::new(opt.region.unwrap_or(Region::default()));
     let bag = get_all_params_for_path(&client, &opt.path)?;
 
-    Ok(match opt.format {
+    Ok(match opt.format.unwrap_or(Format::DotEnv) {
         Format::DotEnv => print!("{}", DotEnv::from(bag)),
         Format::PhpFpm => print!("{}", PhpFpm::from(bag)),
     })

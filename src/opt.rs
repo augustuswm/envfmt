@@ -5,15 +5,32 @@ use std::fmt;
 use std::str::FromStr;
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "envfmt", about = "Fetches env parameters from SSM")]
-#[structopt(raw(setting = "structopt::clap::AppSettings::ColoredHelp"))]
+#[structopt(
+    name = "envfmt",
+    author = "",
+    about = "Fetches env parameters from SSM"
+)]
+#[structopt(
+    raw(setting = "structopt::clap::AppSettings::ColoredHelp"),
+    raw(setting = "structopt::clap::AppSettings::ArgRequiredElseHelp")
+)]
 pub struct EnvFmtOpts {
     /// Path prefix to select parameters for
     pub path: String,
     /// Format to output results as
-    #[structopt(raw(possible_values = "&[&\"dot-env\", &\"php-fpm\"]"))]
-    pub format: Format,
-    #[structopt(name = "region", long, short)]
+    #[structopt(
+        raw(possible_values = "&[&\"dot-env\", &\"php-fpm\"]"),
+        name = "format",
+        long,
+        short
+    )]
+    pub format: Option<Format>,
+    #[structopt(
+        name = "region",
+        long,
+        short,
+        help = "AWS region to query against. Defaults to us-east-1"
+    )]
     pub region: Option<Region>,
 }
 
