@@ -68,7 +68,7 @@ impl ParamBag {
                 for parameter in parameters {
                     if let (Some(name), Some(value)) = (parameter.name, parameter.value) {
                         self.params.push(Param {
-                            key: to_env_name(self.prefix.as_str(), name.as_str()),
+                            key: to_env_name(name.as_str()).to_string(),
                             value,
                         });
                     }
@@ -95,8 +95,8 @@ pub fn make_path_req(path: &str, next_token: Option<String>) -> GetParametersByP
     }
 }
 
-pub fn to_env_name(prefix: &str, name: &str) -> String {
-    name.trim_start_matches(prefix).to_uppercase()
+pub fn to_env_name(name: &str) -> String {
+    name[name.rfind('/').unwrap_or(0) + 1..].to_uppercase()
 }
 
 pub fn get_all_params_for_path<T>(client: &T, path: &str) -> ParamResult
@@ -253,10 +253,7 @@ mod tests {
 
     #[test]
     fn test_converts_to_env_var_name() {
-        assert_eq!(
-            "PARAM_KEY",
-            to_env_name("/path/to/the/", "/path/to/the/param_key")
-        );
+        assert_eq!("PARAM_KEY", to_env_name("/path/to/the/param_key"));
     }
 
     #[test]
