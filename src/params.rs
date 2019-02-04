@@ -32,17 +32,10 @@ impl ParamBag {
 }
 
 pub fn normalize_path(path: &str) -> String {
-    let with_leading_slash = match path.chars().next() {
+    match path.chars().next() {
         Some('/') => path.to_string(),
         _ => "/".to_string() + path,
-    };
-
-    let normalized = match with_leading_slash.chars().last() {
-        Some('/') => with_leading_slash,
-        _ => with_leading_slash + "/",
-    };
-
-    normalized
+    }
 }
 
 type ParamResult = Result<ParamBag, Box<dyn Error>>;
@@ -194,14 +187,10 @@ mod tests {
     #[test]
     fn test_normalizes_path_on_construction() {
         let b1 = ParamBag::new("/path/to/the");
-        let b2 = ParamBag::new("/path/to/the/");
-        let b3 = ParamBag::new("/path/to/the");
-        let b4 = ParamBag::new("path/to/the/");
+        let b2 = ParamBag::new("path/to/the");
 
-        assert_eq!("/path/to/the/", b1.prefix);
-        assert_eq!("/path/to/the/", b2.prefix);
-        assert_eq!("/path/to/the/", b3.prefix);
-        assert_eq!("/path/to/the/", b4.prefix);
+        assert_eq!("/path/to/the", b1.prefix);
+        assert_eq!("/path/to/the", b2.prefix);
     }
 
     #[test]
