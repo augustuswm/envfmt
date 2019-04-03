@@ -4,7 +4,7 @@ use structopt::StructOpt;
 use std::fmt;
 use std::str::FromStr;
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, StructOpt, Default)]
 #[structopt(
     name = "envfmt",
     author = "",
@@ -32,6 +32,13 @@ pub struct EnvFmtOpts {
         help = "AWS region to query against. Defaults to us-east-1"
     )]
     pub region: Option<Region>,
+    #[structopt(
+        name = "profile",
+        long,
+        short,
+        help = "AWS profile to authenticate with"
+    )]
+    pub profile: Option<String>,
 }
 
 #[derive(Debug)]
