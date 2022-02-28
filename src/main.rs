@@ -20,12 +20,18 @@
 //! If left unspecified the region will attempt to be read from the current
 //! environment. In the case that it fails, it will fall back to us-east-1.
 
+use aws_config::default_provider::credentials::DefaultCredentialsChain;
+use aws_config::default_provider::region::DefaultRegionChain;
+use aws_config::profile::{Profile, ProfileSet};
+use aws_sdk_sts::output::AssumeRoleOutput;
+use aws_types::credentials::{CredentialsError, ProvideCredentials, SharedCredentialsProvider};
 use structopt::StructOpt;
-use tracing::debug;
+use tracing::{debug, instrument};
 
 use std::error::Error;
 
 mod formatter;
+mod mfa;
 mod opt;
 mod params;
 mod writer;
@@ -41,24 +47,62 @@ async fn ssm_client() -> aws_sdk_ssm::Client {
     client
 }
 
+async fn ssm_client_2() -> aws_sdk_ssm::Client {
+    let shared_config = aws_config::load_from_env().await;
+
+    let ssm_config = aws_sdk_ssm::config::Builder::from(&shared_config);
+
+    let client = aws_sdk_ssm::Client::new(&shared_config);
+    client
+}
+
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn Error>> {
-    // tracing_subscriber::fmt::init();
-
     let opts = EnvFmtOpts::from_args();
 
-    let client = ssm_client().await;
+    if opts.debug {
+        tracing_subscriber::fmt::init();
+    }
 
-    debug!("Prep complete");
+    let conf = if let Some(token) = opts.mfa_token {
+        let region = DefaultRegionChain::builder()
+            .profile_name(
+                opts.profile
+                    .as_ref()
+                    .map(|s| s.as_str())
+                    .unwrap_or("default"),
+            )
+            .build()
+            .region()
+            .await;
 
-    match opts.command {
+        let mut mfa_provider = mfa::AssumeRoleWithMFATokenProvider::new(token);
+        mfa_provider.set_profile(opts.profile);
+
+        let conf = aws_config::Config::builder()
+            .region(region)
+            .credentials_provider(SharedCredentialsProvider::new(mfa_provider))
+            .build();
+
+        conf
+    } else {
+        aws_config::load_from_env().await
+    };
+
+    let client = aws_sdk_ssm::Client::new(&conf);
+
+    let result = match opts.command {
         Command::Read { ref path } => {
-            let bag = get_all_params_for_path(&client, &path).await?;
+            let res = get_all_params_for_path(&client, &path).await;
 
-            match opts.format.unwrap_or(Format::DotEnv) {
-                Format::DotEnv => print!("{}", DotEnv::from(bag)),
-                Format::PhpFpm => print!("{}", PhpFpm::from(bag)),
+            if let Ok(ref bag) = res {
+                match opts.format.unwrap_or(Format::DotEnv) {
+                    Format::DotEnv => print!("{}", DotEnv::from(bag)),
+                    Format::PhpFpm => print!("{}", PhpFpm::from(bag)),
+                }
             }
+
+            res.map(|_| ())
         }
         Command::Write {
             ref prefix,
@@ -69,8 +113,15 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             let bag = ParamBag::from_dotenv(file_path, &prefix.as_ref().unwrap_or(&"".to_string()));
 
             writer.write(&bag).await;
+
+            Ok(())
         }
     };
+
+    if result.is_err() {
+        tracing::error!(?result, "Failed to get parameters from remote");
+        println!("Failed to get paramaters");
+    }
 
     Ok(())
 }

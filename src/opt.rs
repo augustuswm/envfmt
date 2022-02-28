@@ -39,6 +39,14 @@ pub struct EnvFmtOpts {
         help = "AWS profile to authenticate with"
     )]
     pub profile: Option<String>,
+    #[structopt(name = "debug", long, help = "Display verbose debug information")]
+    pub debug: bool,
+    #[structopt(
+        name = "token",
+        long,
+        help = "MFA token if one is required for authentication"
+    )]
+    pub mfa_token: Option<String>,
 }
 
 #[derive(Debug, StructOpt)]

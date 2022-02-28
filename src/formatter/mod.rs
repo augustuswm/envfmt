@@ -2,17 +2,19 @@ use std::fmt;
 
 use crate::params::{Param, ParamBag};
 
-pub struct DotEnv {
-    params: Vec<Param>,
+pub struct DotEnv<'a> {
+    params: &'a Vec<Param>,
 }
 
-impl From<ParamBag> for DotEnv {
-    fn from(bag: ParamBag) -> Self {
-        DotEnv { params: bag.params }
+impl<'a> From<&'a ParamBag> for DotEnv<'a> {
+    fn from(bag: &'a ParamBag) -> Self {
+        DotEnv {
+            params: &bag.params,
+        }
     }
 }
 
-impl fmt::Display for DotEnv {
+impl<'a> fmt::Display for DotEnv<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let out = self
             .params
@@ -24,17 +26,19 @@ impl fmt::Display for DotEnv {
     }
 }
 
-pub struct PhpFpm {
-    params: Vec<Param>,
+pub struct PhpFpm<'a> {
+    params: &'a Vec<Param>,
 }
 
-impl From<ParamBag> for PhpFpm {
-    fn from(bag: ParamBag) -> Self {
-        PhpFpm { params: bag.params }
+impl<'a> From<&'a ParamBag> for PhpFpm<'a> {
+    fn from(bag: &'a ParamBag) -> Self {
+        PhpFpm {
+            params: &bag.params,
+        }
     }
 }
 
-impl fmt::Display for PhpFpm {
+impl<'a> fmt::Display for PhpFpm<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let prefix = "env[";
 
@@ -77,7 +81,7 @@ mod tests {
 
         let output = "ALPHA=\"the\"\nBETA=\"four\"\nDELTA=\"test\"\nGAMMA=\"strings\"";
 
-        assert_eq!(output, format!("{}", DotEnv { params }));
+        assert_eq!(output, format!("{}", DotEnv { params: &params }));
     }
 
     #[test]
@@ -104,6 +108,6 @@ mod tests {
         let output =
             "env[ALPHA]=\"the\"\nenv[BETA]=\"four\"\nenv[DELTA]=\"test\"\nenv[GAMMA]=\"strings\"";
 
-        assert_eq!(output, format!("{}", PhpFpm { params }));
+        assert_eq!(output, format!("{}", PhpFpm { params: &params }));
     }
 }
