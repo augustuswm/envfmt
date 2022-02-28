@@ -1,0 +1,28 @@
+{
+  "first": {
+    "params": [
+      {
+        "key": "/path/to/the/first_param",
+        "value": "first_param_value"
+      },
+      {
+        "key": "/path/to/the/second_param",
+        "value": "second_param_value"
+      }
+    ],
+    "token": "second"
+  },
+  "second": {
+    "params": [
+      {
+        "key": "/path/to/the/third_param",
+        "value": "third_param_value"
+      },
+      {
+        "key": "/path/to/the/fourth_param",
+        "value": "fourth_param_value"
+      }
+    ],
+    "token": null
+  }
+}

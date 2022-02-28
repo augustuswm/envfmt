@@ -1,7 +1,41 @@
+use async_trait::async_trait;
 use dotenv::from_filename_iter;
 use tracing::debug;
 
 use std::error::Error;
+
+#[async_trait]
+pub trait ReadParamClient {
+    async fn get_params(&self, mut bag: ParamBag) -> ParamResult;
+}
+
+#[async_trait]
+impl ReadParamClient for aws_sdk_ssm::Client {
+    async fn get_params(&self, mut bag: ParamBag) -> ParamResult {
+        let resp = self
+            .get_parameters_by_path()
+            .path(&bag.prefix)
+            .set_next_token(bag.next)
+            .send()
+            .await
+            .map_err(Box::new)?;
+
+        if let Some(parameters) = resp.parameters {
+            for parameter in parameters {
+                if let (Some(name), Some(value)) = (parameter.name, parameter.value) {
+                    bag.params.push(Param {
+                        key: to_env_name(name.as_str()).to_string(),
+                        value,
+                    });
+                }
+            }
+        }
+
+        bag.next = resp.next_token;
+
+        Ok(bag)
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub struct Param {
@@ -54,29 +88,11 @@ type ParamResult = Result<ParamBag, Box<dyn Error>>;
 
 impl ParamBag {
     #[tracing::instrument(skip(client))]
-    pub async fn process(mut self, client: &aws_sdk_ssm::Client) -> ParamResult {
-        let resp = client
-            .get_parameters_by_path()
-            .path(&self.prefix)
-            .set_next_token(self.next)
-            .send()
-            .await
-            .map_err(Box::new)?;
-
-        if let Some(parameters) = resp.parameters {
-            for parameter in parameters {
-                if let (Some(name), Some(value)) = (parameter.name, parameter.value) {
-                    self.params.push(Param {
-                        key: to_env_name(name.as_str()).to_string(),
-                        value,
-                    });
-                }
-            }
-        }
-
-        self.next = resp.next_token;
-
-        Ok(self)
+    pub async fn process<T>(self, client: &T) -> ParamResult
+    where
+        T: ReadParamClient,
+    {
+        client.get_params(self).await
     }
 }
 
@@ -85,15 +101,18 @@ pub fn to_env_name(name: &str) -> String {
 }
 
 #[tracing::instrument(skip(client))]
-pub async fn get_all_params_for_path(client: &aws_sdk_ssm::Client, path: &str) -> ParamResult {
+pub async fn get_all_params_for_path<T>(client: &T, path: &str) -> ParamResult
+where
+    T: ReadParamClient,
+{
     let mut bag = ParamBag::new(path);
 
-    debug!("Created bag");
+    debug!(?bag, "Created empty bag for storage bag");
 
     loop {
-        debug!("Process bag");
-
         bag = bag.process(client).await?;
+
+        debug!(?bag, "Processed bag request. Checking for more.");
 
         if bag.next.is_none() {
             break;
@@ -105,73 +124,90 @@ pub async fn get_all_params_for_path(client: &aws_sdk_ssm::Client, path: &str) -
 
 #[cfg(test)]
 mod tests {
+    use std::{collections::HashMap, sync::RwLock};
+
+    use async_trait::async_trait;
+    use serde::Deserialize;
+    use serde_json;
+    use tracing::instrument;
 
     use super::*;
-    use rusoto_mock::{
-        MockCredentialsProvider, MockRequestDispatcher, MockResponseReader, ReadMockResponse,
-    };
 
-    use std::cell::RefCell;
-
-    struct MultiPageSsmClient {
-        page: RefCell<u8>,
+    #[derive(Deserialize)]
+    struct TestParam {
+        key: String,
+        value: String,
     }
 
-    impl Client for MultiPageSsmClient {
-        fn get_param_page(
-            &self,
-            input: GetParametersByPath,
-        ) -> RusotoFuture<GetParametersByPathResult, GetParametersByPathError> {
-            let res = match *self.page.borrow() {
-                1 => client_with_next().get_param_page(input),
-                2 => client_with_next_ending().get_param_page(input),
-                _ => panic!("Too many pages!"),
+    #[derive(Deserialize)]
+    struct Page {
+        params: Vec<TestParam>,
+        token: Option<String>,
+    }
+
+    #[derive(Deserialize)]
+    struct MultiPageSsmClient {
+        inner: RwLock<Inner>,
+    }
+
+    #[derive(Deserialize)]
+    struct Inner {
+        first_read: bool,
+        pages: HashMap<String, Page>,
+    }
+
+    #[async_trait]
+    impl ReadParamClient for MultiPageSsmClient {
+        #[instrument(skip(self))]
+        async fn get_params(&self, mut bag: ParamBag) -> ParamResult {
+            let mut inner = self.inner.write().unwrap();
+
+            let page = if inner.first_read {
+                inner.pages.get("first")
+            } else {
+                bag.next.and_then(|token| inner.pages.get(&token))
             };
 
-            let new_page = { *self.page.borrow() + 1 };
+            if let Some(page) = page {
+                for p in &page.params {
+                    bag.params.push(Param {
+                        key: to_env_name(&p.key).to_string(),
+                        value: p.value.clone(),
+                    });
+                }
 
-            self.page.replace(new_page);
+                bag.next = page.token.clone();
+            } else {
+                bag.next = None;
+            }
 
-            res
+            inner.first_read = false;
+
+            Ok(bag)
         }
     }
 
-    fn client_with_next() -> SsmClient {
-        rusoto_ssm::SsmClient::new_with(
-            MockRequestDispatcher::default().with_body(&MockResponseReader::read_response(
-                "test_data",
-                "path_with_next_resp.json",
-            )),
-            MockCredentialsProvider,
-            Default::default(),
-        )
-    }
-
-    fn client_with_next_ending() -> SsmClient {
-        rusoto_ssm::SsmClient::new_with(
-            MockRequestDispatcher::default().with_body(&MockResponseReader::read_response(
-                "test_data",
-                "path_with_next_ending_resp.json",
-            )),
-            MockCredentialsProvider,
-            Default::default(),
-        )
-    }
-
-    fn client_without_next() -> SsmClient {
-        rusoto_ssm::SsmClient::new_with(
-            MockRequestDispatcher::default().with_body(&MockResponseReader::read_response(
-                "test_data",
-                "path_resp.json",
-            )),
-            MockCredentialsProvider,
-            Default::default(),
-        )
-    }
-
-    fn client_with_multiple_pages() -> MultiPageSsmClient {
+    fn one_page_client() -> MultiPageSsmClient {
         MultiPageSsmClient {
-            page: RefCell::new(1),
+            inner: RwLock::new(Inner {
+                first_read: true,
+                pages: serde_json::from_str::<HashMap<String, Page>>(include_str!(
+                    "../test_data/one_page_client.json"
+                ))
+                .unwrap(),
+            }),
+        }
+    }
+
+    fn two_page_client() -> MultiPageSsmClient {
+        MultiPageSsmClient {
+            inner: RwLock::new(Inner {
+                first_read: true,
+                pages: serde_json::from_str::<HashMap<String, Page>>(include_str!(
+                    "../test_data/two_page_client.json"
+                ))
+                .unwrap(),
+            }),
         }
     }
 
@@ -184,15 +220,15 @@ mod tests {
         assert_eq!("/path/to/the", b2.prefix);
     }
 
-    #[test]
-    fn test_process_add_results_to_bag() {
+    #[tokio::test]
+    async fn test_process_add_results_to_bag() {
         let mut bag = ParamBag {
             prefix: "/path/to/the/".to_string(),
             params: vec![],
-            next: Some(make_path_req("/path/to/the/", None)),
+            next: None,
         };
 
-        bag = bag.process(&client_without_next()).unwrap();
+        bag = bag.process(&one_page_client()).await.unwrap();
 
         assert_eq!(
             Param {
@@ -211,33 +247,32 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_process_creates_nextuest_with_token() {
+    #[tokio::test]
+    async fn test_process_updates_with_next_token() {
         let mut bag = ParamBag {
             prefix: "/path/to/the/".to_string(),
             params: vec![],
-            next: Some(make_path_req("/path/to/the/", None)),
+            next: None,
         };
 
-        bag = bag.process(&client_with_next()).unwrap();
+        bag = bag.process(&two_page_client()).await.unwrap();
 
         assert!(bag.next.is_some());
-        assert!(bag.next.clone().unwrap().next_token.is_some());
-        assert_eq!(
-            "this-is-the-next-token",
-            bag.next.unwrap().next_token.unwrap()
-        );
+        assert_eq!("second", bag.next.unwrap());
     }
 
-    #[test]
-    fn test_process_does_not_create_nextuest_without_token() {
+    #[tokio::test]
+    async fn test_process_updates_with_empty_token() {
         let mut bag = ParamBag {
             prefix: "/path/to/the/".to_string(),
             params: vec![],
-            next: Some(make_path_req("/path/to/the/", None)),
+            next: None,
         };
 
-        bag = bag.process(&client_without_next()).unwrap();
+        let client = two_page_client();
+
+        bag = bag.process(&client).await.unwrap();
+        bag = bag.process(&client).await.unwrap();
 
         assert!(bag.next.is_none());
     }
@@ -247,16 +282,20 @@ mod tests {
         assert_eq!("PARAM_KEY", to_env_name("/path/to/the/param_key"));
     }
 
-    #[test]
-    fn test_makes_initial_process_call() {
-        let bag = get_all_params_for_path(&client_without_next(), "/path/to/the").unwrap();
+    #[tokio::test]
+    async fn test_makes_initial_process_call() {
+        let bag = get_all_params_for_path(&one_page_client(), "/path/to/the")
+            .await
+            .unwrap();
 
         assert_eq!(2, bag.params.len());
     }
 
-    #[test]
-    fn test_calls_process_until_out_of_requests() {
-        let bag = get_all_params_for_path(&client_with_multiple_pages(), "/path/to/the").unwrap();
+    #[tokio::test]
+    async fn test_calls_process_until_out_of_requests() {
+        let bag = get_all_params_for_path(&two_page_client(), "/path/to/the")
+            .await
+            .unwrap();
         assert_eq!(4, bag.params.len());
         assert!(bag.next.is_none());
     }

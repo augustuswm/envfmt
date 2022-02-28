@@ -106,21 +106,3 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-
-    use super::*;
-
-    #[test]
-    fn test_makes_profile_provider() {
-        std::env::set_var("AWS_SHARED_CREDENTIALS_FILE", "/tmp/not_a_file");
-
-        let mut opts = crate::opt::EnvFmtOpts::default();
-        opts.profile = Some("not_a_profile".to_string());
-
-        let provider = make_profile_provider(&opts.profile.unwrap());
-
-        assert_eq!("not_a_profile", provider.profile())
-    }
-}
