@@ -1,75 +1,58 @@
-use structopt::StructOpt;
+use clap::{Parser, Subcommand};
 
 use std::fmt;
 use std::str::FromStr;
 
-#[derive(Debug, StructOpt, Default)]
-#[structopt(
-    name = "envfmt",
-    author = "",
-    about = "Fetches env parameters from SSM"
-)]
-#[structopt(
-    raw(setting = "structopt::clap::AppSettings::ColoredHelp"),
-    raw(setting = "structopt::clap::AppSettings::ArgRequiredElseHelp")
-)]
+#[derive(Debug, Parser)]
+#[clap(author, version, about)]
 pub struct EnvFmtOpts {
     // Mode to operate in. read or write
-    #[structopt(subcommand)]
+    #[clap(subcommand)]
     pub command: Command,
-    /// Format to output results as
-    #[structopt(
-        raw(possible_values = "&[&\"dot-env\", &\"php-fpm\"]"),
-        name = "format",
-        long,
-        short
-    )]
+    #[clap(name = "format", long, short, global = true, help ="Format to use when printing results", possible_values = ["dot-env", "php-fpm"])]
     pub format: Option<Format>,
-    #[structopt(
+    #[clap(
         name = "region",
         long,
         short,
-        help = "AWS region to query against. Defaults to us-east-1"
+        help = "AWS region to query against. Defaults to us-east-1",
+        global = true
     )]
     pub region: Option<String>,
-    #[structopt(
+    #[clap(
         name = "profile",
         long,
         short,
-        help = "AWS profile to authenticate with"
+        help = "AWS profile to authenticate with",
+        global = true
     )]
     pub profile: Option<String>,
-    #[structopt(name = "debug", long, help = "Display verbose debug information")]
+    #[clap(name = "debug", long, help = "Display verbose debug information")]
     pub debug: bool,
-    #[structopt(
+    #[clap(
         name = "token",
         long,
-        help = "MFA token if one is required for authentication"
+        help = "MFA token if one is required for authentication",
+        global = true
     )]
     pub mfa_token: Option<String>,
 }
 
-#[derive(Debug, StructOpt)]
-#[structopt(
-    raw(setting = "structopt::clap::AppSettings::ColoredHelp"),
-    raw(setting = "structopt::clap::AppSettings::ArgRequiredElseHelp")
-)]
+#[derive(Debug, Subcommand)]
 pub enum Command {
     /// Read parameters from AWS
-    #[structopt(name = "read")]
     Read {
         /// Path prefix to select parameters for
         path: String,
     },
     /// Write parameters to AWS
-    #[structopt(name = "write")]
     Write {
-        #[structopt(name = "prefix", long, help = "Prefix to prepend tp each variable")]
+        #[clap(long, help = "Prefix to prepend tp each variable")]
         prefix: Option<String>,
         /// File path to a config file to read from
         file_path: String,
         /// Allow overwriting of existing values
-        #[structopt(short, long)]
+        #[clap(short, long)]
         overwrite: bool,
     },
 }
@@ -110,3 +93,5 @@ impl FromStr for Format {
         }
     }
 }
+
+impl std::error::Error for ArgError {}

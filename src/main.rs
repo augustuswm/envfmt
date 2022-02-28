@@ -22,7 +22,7 @@
 
 use aws_config::default_provider::region::DefaultRegionChain;
 use aws_types::credentials::SharedCredentialsProvider;
-use structopt::StructOpt;
+use clap::Parser;
 
 use std::error::Error;
 
@@ -39,7 +39,7 @@ use crate::writer::Writer;
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn Error>> {
-    let opts = EnvFmtOpts::from_args();
+    let opts = EnvFmtOpts::parse();
 
     if opts.debug {
         tracing_subscriber::fmt::init();
