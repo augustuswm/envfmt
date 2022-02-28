@@ -20,13 +20,9 @@
 //! If left unspecified the region will attempt to be read from the current
 //! environment. In the case that it fails, it will fall back to us-east-1.
 
-use aws_config::default_provider::credentials::DefaultCredentialsChain;
 use aws_config::default_provider::region::DefaultRegionChain;
-use aws_config::profile::{Profile, ProfileSet};
-use aws_sdk_sts::output::AssumeRoleOutput;
-use aws_types::credentials::{CredentialsError, ProvideCredentials, SharedCredentialsProvider};
+use aws_types::credentials::SharedCredentialsProvider;
 use structopt::StructOpt;
-use tracing::{debug, instrument};
 
 use std::error::Error;
 
@@ -40,21 +36,6 @@ use crate::formatter::{DotEnv, PhpFpm};
 use crate::opt::{Command, EnvFmtOpts, Format};
 use crate::params::{get_all_params_for_path, ParamBag};
 use crate::writer::Writer;
-
-async fn ssm_client() -> aws_sdk_ssm::Client {
-    let shared_config = aws_config::load_from_env().await;
-    let client = aws_sdk_ssm::Client::new(&shared_config);
-    client
-}
-
-async fn ssm_client_2() -> aws_sdk_ssm::Client {
-    let shared_config = aws_config::load_from_env().await;
-
-    let ssm_config = aws_sdk_ssm::config::Builder::from(&shared_config);
-
-    let client = aws_sdk_ssm::Client::new(&shared_config);
-    client
-}
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn Error>> {

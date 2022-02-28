@@ -1,5 +1,3 @@
-use std::{thread, time};
-
 use aws_sdk_ssm::model::ParameterType;
 
 use crate::params::ParamBag;

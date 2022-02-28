@@ -91,7 +91,6 @@ pub enum Format {
 #[derive(Debug)]
 pub enum ArgError {
     InvalidFormat,
-    InvalidCommand,
 }
 
 impl fmt::Display for ArgError {
