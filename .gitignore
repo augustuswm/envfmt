@@ -2,4 +2,4 @@
 .build/artifacts
 /target
 **/*.rs.bk
-.env
+.env*

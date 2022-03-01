@@ -26,6 +26,7 @@ use clap::Parser;
 
 use std::error::Error;
 use std::fmt::Display;
+use std::io::Write;
 
 mod formatter;
 mod mfa;
@@ -84,7 +85,12 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                     Format::PhpFpm => Box::new(PhpFpm::from(bag)),
                 };
 
-                print!("{}", formatted);
+                if let Some(out_file) = opts.out {
+                    let mut file = std::fs::File::create(out_file)?;
+                    file.write_all(format!("{}", formatted).as_bytes())?;
+                } else {
+                    print!("{}", formatted);
+                }
             }
 
             res.map(|_| ())
