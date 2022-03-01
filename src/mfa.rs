@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::{convert::TryFrom, io::Write, time::SystemTime};
 
 use aws_config::{
     default_provider::region::DefaultRegionChain,
@@ -192,20 +192,29 @@ impl ProvideCredentials for AssumeRoleWithMFATokenProvider {
                 .await
                 .map_err(|err| CredentialsError::not_loaded(err))?;
 
-            role.credentials()
-                .map(|credentials| {
-                    aws_types::credentials::Credentials::new(
-                        credentials.access_key_id.as_ref().unwrap(),
-                        credentials.secret_access_key.as_ref().unwrap(),
-                        credentials.session_token().map(|s| s.into()),
-                        None,
-                        // credentials.expiration().map(|t| t.into()),
-                        "AssumeRoleWithMFAToken",
-                    )
-                })
-                .ok_or(CredentialsError::not_loaded(
+            if let Some(creds) = role.credentials {
+                Ok(aws_types::credentials::Credentials::new(
+                    creds
+                        .access_key_id
+                        .as_ref()
+                        .expect("Returned credentials is missing an access key"),
+                    creds
+                        .secret_access_key
+                        .as_ref()
+                        .expect("Returned credentials is missing a secret key"),
+                    creds.session_token().map(|s| s.into()),
+                    creds.expiration.map(|t| {
+                        SystemTime::try_from(t)
+                            .expect("Failed to convert expiration for session token")
+                    }),
+                    // credentials.expiration().map(|t| t.into()),
+                    "AssumeRoleWithMFAToken",
+                ))
+            } else {
+                Err(CredentialsError::not_loaded(
                     "Successfully assume role, but not credentials were returned",
                 ))
+            }
         })
     }
 }

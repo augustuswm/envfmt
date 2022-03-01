@@ -21,12 +21,14 @@
 //! environment. In the case that it fails, it will fall back to us-east-1.
 
 use aws_config::default_provider::region::DefaultRegionChain;
+use aws_config::meta::credentials::LazyCachingCredentialsProvider;
 use aws_types::credentials::SharedCredentialsProvider;
 use clap::Parser;
 
 use std::error::Error;
 use std::fmt::Display;
 use std::io::Write;
+use std::time::Duration;
 
 mod formatter;
 mod mfa;
@@ -63,9 +65,14 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         mfa_provider.set_profile(opts.profile);
         mfa_provider.set_token(opts.mfa_token);
 
+        let lazy_provider = LazyCachingCredentialsProvider::builder()
+            .load(mfa_provider)
+            .load_timeout(Duration::from_secs(60))
+            .build();
+
         let conf = aws_config::Config::builder()
             .region(region)
-            .credentials_provider(SharedCredentialsProvider::new(mfa_provider))
+            .credentials_provider(SharedCredentialsProvider::new(lazy_provider))
             .build();
 
         conf
