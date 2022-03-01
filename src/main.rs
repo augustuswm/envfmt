@@ -25,6 +25,7 @@ use aws_types::credentials::SharedCredentialsProvider;
 use clap::Parser;
 
 use std::error::Error;
+use std::fmt::Display;
 
 mod formatter;
 mod mfa;
@@ -45,7 +46,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         tracing_subscriber::fmt::init();
     }
 
-    let conf = if let Some(token) = opts.mfa_token {
+    let conf = if opts.mfa || opts.mfa_token.is_some() {
         let region = DefaultRegionChain::builder()
             .profile_name(
                 opts.profile
@@ -57,8 +58,9 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             .region()
             .await;
 
-        let mut mfa_provider = mfa::AssumeRoleWithMFATokenProvider::new(token);
+        let mut mfa_provider = mfa::AssumeRoleWithMFATokenProvider::new();
         mfa_provider.set_profile(opts.profile);
+        mfa_provider.set_token(opts.mfa_token);
 
         let conf = aws_config::Config::builder()
             .region(region)
@@ -77,10 +79,12 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             let res = get_all_params_for_path(&client, &path).await;
 
             if let Ok(ref bag) = res {
-                match opts.format.unwrap_or(Format::DotEnv) {
-                    Format::DotEnv => print!("{}", DotEnv::from(bag)),
-                    Format::PhpFpm => print!("{}", PhpFpm::from(bag)),
-                }
+                let formatted: Box<dyn Display> = match opts.format.unwrap_or(Format::DotEnv) {
+                    Format::DotEnv => Box::new(DotEnv::from(bag)),
+                    Format::PhpFpm => Box::new(PhpFpm::from(bag)),
+                };
+
+                print!("{}", formatted);
             }
 
             res.map(|_| ())

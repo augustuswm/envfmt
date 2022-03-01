@@ -30,12 +30,29 @@ pub struct EnvFmtOpts {
     #[clap(name = "debug", long, help = "Display verbose debug information")]
     pub debug: bool,
     #[clap(
-        name = "token",
+        name = "mfa",
         long,
-        help = "MFA token if one is required for authentication",
-        global = true
+        help = "Enables MFA authentication and token prompt",
+        global = true,
+        conflicts_with = "mfa-token"
+    )]
+    pub mfa: bool,
+    #[clap(
+        name = "mfa-token",
+        long,
+        help = "Enables MFA authentication and accepts token instead of prompting",
+        global = true,
+        conflicts_with = "mfa"
     )]
     pub mfa_token: Option<String>,
+    #[clap(
+        name = "out",
+        short,
+        long,
+        help = "Output location for parameters instead of stdout",
+        global = true
+    )]
+    pub out: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]

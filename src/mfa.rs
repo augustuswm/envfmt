@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use aws_config::{
     default_provider::region::DefaultRegionChain,
     profile::{Profile, ProfileSet},
@@ -8,19 +10,24 @@ use tracing::instrument;
 #[derive(Debug)]
 pub struct AssumeRoleWithMFATokenProvider {
     profile: Option<String>,
-    token: String,
+    token: Option<String>,
 }
 
 impl AssumeRoleWithMFATokenProvider {
-    pub fn new(token: impl Into<String>) -> Self {
+    pub fn new() -> Self {
         Self {
             profile: None,
-            token: token.into(),
+            token: None,
         }
     }
 
     pub fn set_profile(&mut self, profile: Option<impl Into<String>>) -> &mut Self {
         self.profile = profile.map(|p| p.into());
+        self
+    }
+
+    pub fn set_token(&mut self, token: Option<impl Into<String>>) -> &mut Self {
+        self.token = token.map(|t| t.into());
         self
     }
 }
@@ -151,12 +158,36 @@ impl ProvideCredentials for AssumeRoleWithMFATokenProvider {
                 .build();
 
             let sts_client = aws_sdk_sts::Client::new(&config);
+
+            // TODO: Academically how do we rewrite this block to prevent creating a copy of the
+            // token when it has already been supplied
+            let mfa_token = if let Some(mfa_token) = &self.token {
+                mfa_token.to_string()
+            } else {
+                let handle = tokio::task::spawn_blocking(|| -> Result<String, CredentialsError> {
+                    print!("MFA token is required: ");
+                    std::io::stdout()
+                        .flush()
+                        .map_err(|err| CredentialsError::not_loaded(err))?;
+
+                    let mut input = String::new();
+                    std::io::stdin()
+                        .read_line(&mut input)
+                        .map_err(|err| CredentialsError::not_loaded(err))?;
+                    Ok(input.trim().to_string())
+                })
+                .await
+                .map_err(|err| CredentialsError::not_loaded(err))?;
+
+                handle?
+            };
+
             let role = sts_client
                 .assume_role()
                 .role_session_name("envfmt")
                 .role_arn(request.role)
                 .serial_number(request.mfa_serial)
-                .token_code(&self.token)
+                .token_code(mfa_token)
                 .send()
                 .await
                 .map_err(|err| CredentialsError::not_loaded(err))?;
